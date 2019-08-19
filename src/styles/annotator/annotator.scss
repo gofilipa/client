@@ -7,20 +7,24 @@ $base-font-size: 14px;
 
 //HIGHLIGHTS////////////////////////////////
 .annotator-highlights-always-on {
-  .red {
-      background-color: $highlight-red;
-      cursor: pointer;
-    }
+  .annotator-hl {
+    background-color: $highlight-yellow;
+  }
+  
+  .annotator-hl--red {
+    background-color: $highlight-red;
+    cursor: pointer;
+  }
 
-  .blue {
+  .annotator-hl--blue {
     background-color: $highlight-blue;
     cursor: pointer;
-    }
+  }
 
-  .yellow {
+  .annotator-hl--yellow {
     background-color: $highlight-yellow;
     cursor: pointer;
-    }
+  }
 }
   
 //  .annotator-hl .annotator-hl {

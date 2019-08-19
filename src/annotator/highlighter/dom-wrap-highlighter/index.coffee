@@ -11,13 +11,13 @@ exports.highlightRange = (normedRange, event, cssClass='annotator-hl') ->
   white = /^\s*$/
 
   console.log("annotation.event: ", event)
-  colorClasses = event.path[0].classList
+  colorClasses = event.path[0].classList # @TODO check that path exists inside event
   if colorClasses.contains('yellow')
-    hlColor = 'yellow'
+    hlColor = 'annotator-hl--yellow'
   else if colorClasses.contains('red')
-    hlColor = 'red'
+    hlColor = 'annotator-hl--red'
   else if colorClasses.contains('blue')
-    hlColor = 'blue'
+    hlColor = 'annotator-hl--blue'
   else
     hlColor = ''
 

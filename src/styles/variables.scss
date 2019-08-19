@@ -4,10 +4,11 @@
 $white: #fff !default;
 $black: #000 !default;
 
-// Purples (added by FC)
+// Highlight Colors
 //----------------------
-$purple-light: rgba(134, 36, 214, 0.3);
-$purple-dark: rgba(68, 11, 109, 0.3);
+$highlight-red: #fd2630ba; 
+$highlight-blue: #0621f3ab;  
+$highlight-yellow: rgba(255,255,60,0.3);
 
 
 // Grays
@@ -126,9 +127,6 @@ $zindex-tooltip: 20;
 // Other Variables
 // -------------------------
 $bucket-bar-width: 22px;
-$highlight-red: red;
-$highlight-blue: blue;
-$highlight-yellow: rgb(247, 238, 55);
 $highlight-color-focus: rgba(156, 230, 255, 0.6);
 $top-bar-height: 40px;
 

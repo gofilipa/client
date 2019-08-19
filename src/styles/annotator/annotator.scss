@@ -7,19 +7,29 @@ $base-font-size: 14px;
 
 //HIGHLIGHTS////////////////////////////////
 .annotator-highlights-always-on {
-  .annotator-hl {
-    background-color: $highlight-color;
+  .red {
+      background-color: $highlight-red;
+      cursor: pointer;
+    }
+
+  .blue {
+    background-color: $highlight-blue;
     cursor: pointer;
-  }
+    }
 
-  .annotator-hl .annotator-hl {
-    background-color: $highlight-color-second;
-  }
-
-  .annotator-hl .annotator-hl .annotator-hl {
-    background-color: $highlight-color-third;
-  }
+  .yellow {
+    background-color: $highlight-yellow;
+    cursor: pointer;
+    }
 }
+  
+//  .annotator-hl .annotator-hl {
+//    background-color: $highlight-color-second;
+//  }
+
+//  .annotator-hl .annotator-hl .annotator-hl {
+//    background-color: $highlight-color-third;
+//  }
 
 .annotator-hl.annotator-hl-focused {
   background-color: $highlight-color-focus !important;

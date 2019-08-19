@@ -237,17 +237,7 @@ module.exports = class Guest extends Delegator
       return animationPromise ->
         range = xpathRange.sniff(anchor.range)
         normedRange = range.normalize(root)
-        console.log("annotation: ", annotation)
-        colorClasses = annotation.clickEvent.path[0].classList
-        if colorClasses.contains('yellow')
-          hlColor = 'yellow'
-        else if colorClasses.contains('red')
-          hlColor = 'red'
-        else if colorClasses.contains('blue')
-          hlColor = 'blue'
-        else
-          hlColor = ''
-        highlights = highlighter.highlightRange(normedRange, hlColor)
+        highlights = highlighter.highlightRange(normedRange, annotation.clickEvent)
 
         $(highlights).data('annotation', anchor.annotation)
         anchor.highlights = highlights

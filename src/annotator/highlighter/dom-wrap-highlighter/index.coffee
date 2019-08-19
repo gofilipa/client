@@ -7,37 +7,23 @@ $ = require('jquery')
 # cssClass - A CSS class to use for the highlight (default: 'annotator-hl')
 #
 # Returns an array of highlight Elements.
-exports.highlightRange = (normedRange, cssClass='annotator-hl') ->
+exports.highlightRange = (normedRange, event, cssClass='annotator-hl') ->
   white = /^\s*$/
 
-  # Trying to select the class for button and connect
-  # it to the class for highlight.... doesnt work
-  #
-  # With color classes:
-  #
-  # if $(elem.parents('.red')) is true
-  #   cssClass = 'red'
-  # else if $(element.parents()) is '.blue'
-  #   cssClass = 'blue'
-  # else if $(element.parents()) is '.yellow'
-  #   cssClass = 'yellow'
-  # else 
-	# 	cssClass = 'yellow'
-
-  # With IDs: (also doesn't work)
-  #
-  # if $('#red') 
-  #   cssClass = 'red'
-  # else if $(element.parents()) is '.blue'
-  #   cssClass = 'blue'
-  # else if $(element.parents()) is '.yellow'
-  #   cssClass = 'yellow'
-  # else 
-	# 	cssClass = 'yellow'
+  console.log("annotation.event: ", event)
+  colorClasses = event.path[0].classList
+  if colorClasses.contains('yellow')
+    hlColor = 'yellow'
+  else if colorClasses.contains('red')
+    hlColor = 'red'
+  else if colorClasses.contains('blue')
+    hlColor = 'blue'
+  else
+    hlColor = ''
 
   # A custom element name is used here rather than `<span>` to reduce the
   # likelihood of highlights being hidden by page styling.
-  hl = $("<hypothesis-highlight class='#{cssClass}'></hypothesis-highlight>")
+  hl = $("<hypothesis-highlight class='#{cssClass} #{hlColor}'></hypothesis-highlight>")
 
   # Ignore text nodes that contain only whitespace characters. This prevents
   # spans being injected between elements that can only contain a restricted

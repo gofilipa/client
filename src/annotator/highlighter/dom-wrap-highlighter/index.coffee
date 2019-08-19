@@ -7,7 +7,7 @@ $ = require('jquery')
 # cssClass - A CSS class to use for the highlight (default: 'annotator-hl')
 #
 # Returns an array of highlight Elements.
-exports.highlightRange = (normedRange, cssClass='yellow') ->
+exports.highlightRange = (normedRange, cssClass='annotator-hl') ->
   white = /^\s*$/
 
   # Trying to select the class for button and connect

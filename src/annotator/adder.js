@@ -160,7 +160,7 @@ class Adder {
       event.preventDefault();
       event.stopPropagation();
 
-      callback();
+      callback(event);
 
       this.hide();
     };

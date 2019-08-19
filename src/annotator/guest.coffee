@@ -58,9 +58,9 @@ module.exports = class Guest extends Delegator
       onAnnotate: ->
         self.createAnnotation()
         document.getSelection().removeAllRanges()
-      onHighlight: ->  ## add events
+      onHighlight: (event) ->  ## add events
         self.setVisibleHighlights(true)
-        self.createHighlight()
+        self.createHighlight(event)
         document.getSelection().removeAllRanges()
     })
     this.selections = selections(document).subscribe
@@ -237,7 +237,17 @@ module.exports = class Guest extends Delegator
       return animationPromise ->
         range = xpathRange.sniff(anchor.range)
         normedRange = range.normalize(root)
-        highlights = highlighter.highlightRange(normedRange)
+        console.log("annotation: ", annotation)
+        colorClasses = annotation.clickEvent.path[0].classList
+        if colorClasses.contains('yellow')
+          hlColor = 'yellow'
+        else if colorClasses.contains('red')
+          hlColor = 'red'
+        else if colorClasses.contains('blue')
+          hlColor = 'blue'
+        else
+          hlColor = ''
+        highlights = highlighter.highlightRange(normedRange, hlColor)
 
         $(highlights).data('annotation', anchor.annotation)
         anchor.highlights = highlights
@@ -350,8 +360,8 @@ module.exports = class Guest extends Delegator
     @crossframe?.call('showSidebar') unless annotation.$highlight
     annotation
 
-  createHighlight: ->
-    return this.createAnnotation({$highlight: true})
+  createHighlight: (event) ->
+    return this.createAnnotation({$highlight: true, clickEvent: event})
 
   # Create a blank comment (AKA "page note")
   createComment: () ->

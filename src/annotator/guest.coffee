@@ -58,7 +58,7 @@ module.exports = class Guest extends Delegator
       onAnnotate: ->
         self.createAnnotation()
         document.getSelection().removeAllRanges()
-      onHighlight: (event) ->  ## add events
+      onHighlight: (event) ->  ## added event
         self.setVisibleHighlights(true)
         self.createHighlight(event)
         document.getSelection().removeAllRanges()
@@ -231,7 +231,7 @@ module.exports = class Guest extends Delegator
       .then((range) -> {annotation, target, range})
       .catch(-> {annotation, target})
 
-    highlight = (anchor) -> # add event
+    highlight = (anchor) ->
       # Highlight the range for an anchor.
       return anchor unless anchor.range?
       return animationPromise ->

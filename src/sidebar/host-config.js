@@ -17,6 +17,9 @@ function hostPageConfig(window) {
     // Direct-linked annotation ID
     'annotations',
 
+    // Direct-linked group ID
+    'group',
+
     // Default query passed by url
     'query',
 
@@ -34,6 +37,9 @@ function hostPageConfig(window) {
     // New note button override.
     // This should be removed once new note button is enabled for everybody.
     'enableExperimentalNewNoteButton',
+
+    // Forces the sidebar to filter annotations to a single user.
+    'focus',
 
     // Fetch config from a parent frame.
     'requestConfigFromFrame',

@@ -1,10 +1,10 @@
 'use strict';
 
 const EventEmitter = require('tiny-emitter');
-const proxyquire = require('proxyquire');
 
-const events = require('../../events');
 const unroll = require('../../../shared/test/util').unroll;
+
+const Streamer = require('../streamer');
 
 const fixtures = {
   createNotification: {
@@ -82,7 +82,6 @@ describe('Streamer', function() {
   let fakeSession;
   let fakeSettings;
   let activeStreamer;
-  let Streamer;
 
   function createDefaultStreamer() {
     activeStreamer = new Streamer(
@@ -122,12 +121,16 @@ describe('Streamer', function() {
 
     fakeStore = {
       annotationExists: sinon.stub().returns(false),
-      isSidebar: sinon.stub().returns(true),
+      clearPendingUpdates: sinon.stub(),
       getState: sinon.stub().returns({
         session: {
           userid: 'jim@hypothes.is',
         },
       }),
+      isSidebar: sinon.stub().returns(true),
+      pendingUpdates: sinon.stub().returns({}),
+      pendingDeletions: sinon.stub().returns({}),
+      receiveRealTimeUpdates: sinon.stub(),
     };
 
     fakeGroups = {
@@ -143,12 +146,13 @@ describe('Streamer', function() {
       websocketUrl: 'ws://example.com/ws',
     };
 
-    Streamer = proxyquire('../streamer', {
+    Streamer.$imports.$mock({
       '../websocket': FakeSocket,
     });
   });
 
   afterEach(function() {
+    Streamer.$imports.$restore();
     activeStreamer = null;
   });
 
@@ -277,20 +281,17 @@ describe('Streamer', function() {
         fakeStore.isSidebar.returns(false);
       });
 
-      it('does not defer updates', function() {
-        fakeWebSocket.notify(fixtures.createNotification);
-
-        assert.calledWith(
-          fakeAnnotationMapper.loadAnnotations,
-          fixtures.createNotification.payload
-        );
-      });
-
-      it('applies updates from all groups', function() {
-        fakeGroups.focused.returns({ id: 'private' });
+      it('applies updates immediately', function() {
+        const [ann] = fixtures.createNotification.payload;
+        fakeStore.pendingUpdates.returns({
+          [ann.id]: ann,
+        });
 
         fakeWebSocket.notify(fixtures.createNotification);
 
+        assert.calledWith(fakeStore.receiveRealTimeUpdates, {
+          updatedAnnotations: [ann],
+        });
         assert.calledWith(
           fakeAnnotationMapper.loadAnnotations,
           fixtures.createNotification.payload
@@ -301,56 +302,37 @@ describe('Streamer', function() {
     context('when the app is the sidebar', function() {
       it('saves pending updates', function() {
         fakeWebSocket.notify(fixtures.createNotification);
-        assert.equal(activeStreamer.countPendingUpdates(), 1);
+        assert.calledWith(fakeStore.receiveRealTimeUpdates, {
+          updatedAnnotations: fixtures.createNotification.payload,
+        });
       });
 
-      it('does not save pending updates for annotations in unfocused groups', function() {
-        fakeGroups.focused.returns({ id: 'private' });
-        fakeWebSocket.notify(fixtures.createNotification);
-        assert.equal(activeStreamer.countPendingUpdates(), 0);
-      });
-
-      it('saves pending deletions if the annotation is loaded', function() {
-        const id = fixtures.deleteNotification.payload[0].id;
-        fakeStore.annotationExists.returns(true);
-
+      it('saves pending deletions', function() {
         fakeWebSocket.notify(fixtures.deleteNotification);
-
-        assert.isTrue(activeStreamer.hasPendingDeletion(id));
-        assert.equal(activeStreamer.countPendingUpdates(), 1);
-      });
-
-      it('discards pending deletions if the annotation is not loaded', function() {
-        const id = fixtures.deleteNotification.payload[0].id;
-        fakeStore.annotationExists.returns(false);
-
-        fakeWebSocket.notify(fixtures.deleteNotification);
-
-        assert.isFalse(activeStreamer.hasPendingDeletion(id));
-      });
-
-      it('saves one pending update per annotation', function() {
-        fakeWebSocket.notify(fixtures.createNotification);
-        fakeWebSocket.notify(fixtures.updateNotification);
-        assert.equal(activeStreamer.countPendingUpdates(), 1);
-      });
-
-      it('discards pending updates if an unloaded annotation is deleted', function() {
-        fakeStore.annotationExists.returns(false);
-
-        fakeWebSocket.notify(fixtures.createNotification);
-        fakeWebSocket.notify(fixtures.deleteNotification);
-
-        assert.equal(activeStreamer.countPendingUpdates(), 0);
+        assert.calledWith(fakeStore.receiveRealTimeUpdates, {
+          deletedAnnotations: fixtures.deleteNotification.payload,
+        });
       });
 
       it('does not apply updates immediately', function() {
+        const ann = fixtures.createNotification.payload;
+        fakeStore.pendingUpdates.returns({
+          [ann.id]: ann,
+        });
+
         fakeWebSocket.notify(fixtures.createNotification);
+
         assert.notCalled(fakeAnnotationMapper.loadAnnotations);
       });
 
       it('does not apply deletions immediately', function() {
+        const ann = fixtures.deleteNotification.payload;
+        fakeStore.pendingDeletions.returns({
+          [ann.id]: true,
+        });
+
         fakeWebSocket.notify(fixtures.deleteNotification);
+
         assert.notCalled(fakeAnnotationMapper.unloadAnnotations);
       });
     });
@@ -363,18 +345,16 @@ describe('Streamer', function() {
     });
 
     it('applies pending updates', function() {
-      fakeWebSocket.notify(fixtures.createNotification);
+      fakeStore.pendingUpdates.returns({ 'an-id': { id: 'an-id' } });
       activeStreamer.applyPendingUpdates();
-      assert.calledWith(
-        fakeAnnotationMapper.loadAnnotations,
-        fixtures.createNotification.payload
-      );
+      assert.calledWith(fakeAnnotationMapper.loadAnnotations, [
+        { id: 'an-id' },
+      ]);
     });
 
     it('applies pending deletions', function() {
-      fakeStore.annotationExists.returns(true);
+      fakeStore.pendingDeletions.returns({ 'an-id': true });
 
-      fakeWebSocket.notify(fixtures.deleteNotification);
       activeStreamer.applyPendingUpdates();
 
       assert.calledWithMatch(
@@ -386,56 +366,7 @@ describe('Streamer', function() {
     it('clears the set of pending updates', function() {
       fakeWebSocket.notify(fixtures.createNotification);
       activeStreamer.applyPendingUpdates();
-      assert.equal(activeStreamer.countPendingUpdates(), 0);
-    });
-  });
-
-  describe('when annotations are unloaded, updated or deleted', function() {
-    const changeEvents = [
-      { event: events.ANNOTATION_DELETED },
-      { event: events.ANNOTATION_UPDATED },
-      { event: events.ANNOTATIONS_UNLOADED },
-    ];
-
-    beforeEach(function() {
-      createDefaultStreamer();
-      return activeStreamer.connect();
-    });
-
-    unroll(
-      'discards pending updates when #event occurs',
-      function(testCase) {
-        fakeWebSocket.notify(fixtures.createNotification);
-        assert.equal(activeStreamer.countPendingUpdates(), 1);
-        fakeRootScope.$broadcast(testCase.event, { id: 'an-id' });
-        assert.equal(activeStreamer.countPendingUpdates(), 0);
-      },
-      changeEvents
-    );
-
-    unroll(
-      'discards pending deletions when #event occurs',
-      function(testCase) {
-        fakeStore.annotationExists.returns(true);
-        fakeWebSocket.notify(fixtures.deleteNotification);
-
-        fakeRootScope.$broadcast(testCase.event, { id: 'an-id' });
-
-        assert.isFalse(activeStreamer.hasPendingDeletion('an-id'));
-      },
-      changeEvents
-    );
-  });
-
-  describe('when the focused group changes', function() {
-    it('clears pending updates and deletions', function() {
-      createDefaultStreamer();
-      return activeStreamer.connect().then(function() {
-        fakeWebSocket.notify(fixtures.createNotification);
-        fakeRootScope.$broadcast(events.GROUP_FOCUSED);
-
-        assert.equal(activeStreamer.countPendingUpdates(), 0);
-      });
+      assert.calledWith(fakeStore.clearPendingUpdates);
     });
   });
 

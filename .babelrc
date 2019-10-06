@@ -1,11 +1,17 @@
 {
   "presets": [
+    ["@babel/preset-react", {
+      "pragma": "createElement"
+    }],
     ["@babel/preset-env", {
        "targets": {
          "browsers": ["> 0.3%"]
       }
     }]
   ],
-  "plugins": ["angularjs-annotate"],
+  "plugins": [
+    "angularjs-annotate",
+    "transform-async-to-promises"
+  ],
   "ignore": ["**/vendor/*"]
 }

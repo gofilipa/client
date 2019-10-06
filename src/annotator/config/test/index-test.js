@@ -1,23 +1,22 @@
 'use strict';
 
-const proxyquire = require('proxyquire');
-const util = require('../../../shared/test/util');
-
-const fakeSettingsFrom = sinon.stub();
-
-const configFrom = proxyquire(
-  '../index',
-  util.noCallThru({
-    './settings': fakeSettingsFrom,
-  })
-);
+const configFrom = require('../index');
 
 describe('annotator.config.index', function() {
-  beforeEach('reset fakeSettingsFrom', function() {
-    fakeSettingsFrom.reset();
-    fakeSettingsFrom.returns({
+  let fakeSettingsFrom;
+
+  beforeEach(() => {
+    fakeSettingsFrom = sinon.stub().returns({
       hostPageSetting: sinon.stub(),
     });
+
+    configFrom.$imports.$mock({
+      './settings': fakeSettingsFrom,
+    });
+  });
+
+  afterEach(() => {
+    configFrom.$imports.$restore();
   });
 
   it('gets the configuration settings', function() {
@@ -27,17 +26,17 @@ describe('annotator.config.index', function() {
     assert.calledWithExactly(fakeSettingsFrom, 'WINDOW');
   });
 
-  ['sidebarAppUrl', 'query', 'annotations', 'showHighlights'].forEach(function(
-    settingName
-  ) {
-    it('returns the ' + settingName + ' setting', function() {
-      fakeSettingsFrom()[settingName] = 'SETTING_VALUE';
+  ['sidebarAppUrl', 'query', 'annotations', 'group', 'showHighlights'].forEach(
+    settingName => {
+      it('returns the ' + settingName + ' setting', () => {
+        fakeSettingsFrom()[settingName] = 'SETTING_VALUE';
 
-      const config = configFrom('WINDOW');
+        const config = configFrom('WINDOW');
 
-      assert.equal(config[settingName], 'SETTING_VALUE');
-    });
-  });
+        assert.equal(config[settingName], 'SETTING_VALUE');
+      });
+    }
+  );
 
   context("when there's no application/annotator+html <link>", function() {
     beforeEach('remove the application/annotator+html <link>', function() {

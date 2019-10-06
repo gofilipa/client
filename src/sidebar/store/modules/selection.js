@@ -10,11 +10,13 @@
 
 'use strict';
 
+const { createSelector } = require('reselect');
 const immutable = require('seamless-immutable');
 
+const arrayUtil = require('../../util/array-util');
+const metadata = require('../../util/annotation-metadata');
 const toSet = require('../../util/array-util').toSet;
 const uiConstants = require('../../ui-constants');
-const tabs = require('../../tabs');
 
 const util = require('../util');
 
@@ -63,6 +65,29 @@ function freeze(selection) {
   }
 }
 
+const setTab = (selectedTab, newTab) => {
+  // Do nothing if the "new tab" is not a valid tab.
+  if (
+    [
+      uiConstants.TAB_ANNOTATIONS,
+      uiConstants.TAB_NOTES,
+      uiConstants.TAB_ORPHANS,
+    ].indexOf(newTab) === -1
+  ) {
+    return {};
+  }
+  // Shortcut if the tab is already correct, to avoid resetting the sortKey
+  // unnecessarily.
+  if (selectedTab === newTab) {
+    return {};
+  }
+  return {
+    selectedTab: newTab,
+    sortKey: TAB_SORTKEY_DEFAULT[newTab],
+    sortKeysAvailable: TAB_SORTKEYS_AVAILABLE[newTab],
+  };
+};
+
 function init(settings) {
   return {
     // Contains a map of annotation tag:true pairs.
@@ -88,6 +113,13 @@ function init(settings) {
 
     selectedTab: TAB_DEFAULT,
 
+    focusMode: {
+      enabled: settings.hasOwnProperty('focus'), // readonly
+      focused: true,
+      // Copy over the focus confg from settings object
+      config: { ...(settings.focus ? settings.focus : {}) },
+    },
+
     // Key by which annotations are currently sorted.
     sortKey: TAB_SORTKEY_DEFAULT[TAB_DEFAULT],
     // Keys by which annotations can be sorted.
@@ -96,7 +128,20 @@ function init(settings) {
 }
 
 const update = {
-  CLEAR_SELECTION: function() {
+  CLEAR_SELECTION: function(state) {
+    let selectedTab = state.selectedTab;
+    if (selectedTab === uiConstants.TAB_ORPHANS) {
+      selectedTab = uiConstants.TAB_ANNOTATIONS;
+    }
+    const tabSettings = setTab(state.selectedTab, selectedTab);
+    return {
+      filterQuery: null,
+      selectedAnnotationMap: null,
+      ...tabSettings,
+    };
+  },
+
+  CLEAR_SELECTED_ANNOTATIONS: function() {
     return { filterQuery: null, selectedAnnotationMap: null };
   },
 
@@ -106,6 +151,15 @@ const update = {
 
   FOCUS_ANNOTATIONS: function(state, action) {
     return { focusedAnnotationMap: action.focused };
+  },
+
+  SET_FOCUS_MODE_FOCUSED: function(state, action) {
+    return {
+      focusMode: {
+        ...state.focusMode,
+        focused: action.focused,
+      },
+    };
   },
 
   SET_FORCE_VISIBLE: function(state, action) {
@@ -121,37 +175,33 @@ const update = {
   },
 
   SELECT_TAB: function(state, action) {
-    // Do nothing if the "new tab" is not a valid tab.
-    if (
-      [
-        uiConstants.TAB_ANNOTATIONS,
-        uiConstants.TAB_NOTES,
-        uiConstants.TAB_ORPHANS,
-      ].indexOf(action.tab) === -1
-    ) {
-      return {};
-    }
-    // Shortcut if the tab is already correct, to avoid resetting the sortKey
-    // unnecessarily.
-    if (state.selectedTab === action.tab) {
-      return {};
-    }
-    return {
-      selectedTab: action.tab,
-      sortKey: TAB_SORTKEY_DEFAULT[action.tab],
-      sortKeysAvailable: TAB_SORTKEYS_AVAILABLE[action.tab],
-    };
+    return setTab(state.selectedTab, action.tab);
   },
 
   ADD_ANNOTATIONS(state, action) {
-    const counts = tabs.counts(action.annotations);
+    const noteCount = arrayUtil.countIf(
+      action.annotations,
+      metadata.isPageNote
+    );
     // If there are no annotations at all, ADD_ANNOTATIONS will not be called.
-    const haveOnlyPageNotes = counts.notes === action.annotations.length;
+    const haveOnlyPageNotes = noteCount === action.annotations.length;
     // If this is the init phase and there are only page notes, select the page notes tab.
     if (state.annotations.length === 0 && haveOnlyPageNotes) {
       return { selectedTab: uiConstants.TAB_NOTES };
     }
     return {};
+  },
+
+  REMOVE_ANNOTATIONS: function(state, action) {
+    const selection = Object.assign({}, state.selectedAnnotationMap);
+    action.annotations.forEach(annotation => {
+      if (annotation.id) {
+        delete selection[annotation.id];
+      }
+    });
+    return {
+      selectedAnnotationMap: freeze(selection),
+    };
   },
 
   SET_FILTER_QUERY: function(state, action) {
@@ -273,6 +323,16 @@ function setFilterQuery(query) {
   };
 }
 
+/**
+ * Set the focused to only show annotations matching the current focus mode.
+ */
+function setFocusModeFocused(focused) {
+  return {
+    type: actions.SET_FOCUS_MODE_FOCUSED,
+    focused,
+  };
+}
+
 /** Sets the sort key for the annotation list. */
 function setSortKey(key) {
   return {
@@ -295,23 +355,89 @@ function hasSelectedAnnotations(state) {
   return !!state.selectedAnnotationMap;
 }
 
-/** De-select an annotation. */
-function removeSelectedAnnotation(id) {
-  // FIXME: This should be converted to a plain action and accessing the state
-  // should happen in the update() function
-  return function(dispatch, getState) {
-    const selection = Object.assign({}, getState().selectedAnnotationMap);
-    if (!selection || !id) {
-      return;
-    }
-    delete selection[id];
-    dispatch(select(selection));
+/** De-select all annotations. */
+function clearSelectedAnnotations() {
+  return { type: actions.CLEAR_SELECTED_ANNOTATIONS };
+}
+
+function clearSelection() {
+  return {
+    type: actions.CLEAR_SELECTION,
   };
 }
 
-/** De-select all annotations. */
-function clearSelectedAnnotations() {
-  return { type: actions.CLEAR_SELECTION };
+/**
+ * Returns the annotation ID of the first annotation in `selectedAnnotationMap`.
+ *
+ * @return {string|null}
+ */
+const getFirstSelectedAnnotationId = createSelector(
+  state => state.selectedAnnotationMap,
+  selected => (selected ? Object.keys(selected)[0] : null)
+);
+
+function filterQuery(state) {
+  return state.filterQuery;
+}
+
+/**
+ * Do the config settings indicate that the client should be in a focused mode?
+ *
+ * @return {boolean}
+ */
+function focusModeEnabled(state) {
+  return state.focusMode.enabled;
+}
+
+/**
+ * Is a focus mode enabled, and is it presently applied?
+ *
+ * @return {boolean}
+ */
+function focusModeFocused(state) {
+  return focusModeEnabled(state) && state.focusMode.focused;
+}
+
+/**
+ * Returns the username for a focused user or `null` if no focused user.
+ *
+ * @return {object|null}
+ */
+function focusModeUsername(state) {
+  if (state.focusMode.config.user && state.focusMode.config.user.username) {
+    return state.focusMode.config.user.username;
+  }
+  return null;
+}
+
+/**
+ * Does the configured focus mode include user info, i.e. are we focusing on a
+ * user?
+ *
+ * @return {boolean}
+ */
+function focusModeHasUser(state) {
+  return focusModeEnabled(state) && !!focusModeUsername(state);
+}
+
+/**
+ * Returns the display name for a user or the username
+ * if display name is not present. If both are missing
+ * then this returns an empty string.
+ *
+ * @return {string}
+ */
+function focusModeUserPrettyName(state) {
+  const user = state.focusMode.config.user;
+  if (!user) {
+    return '';
+  } else if (user.displayName) {
+    return user.displayName;
+  } else if (user.username) {
+    return user.username;
+  } else {
+    return '';
+  }
 }
 
 module.exports = {
@@ -320,13 +446,14 @@ module.exports = {
 
   actions: {
     clearSelectedAnnotations: clearSelectedAnnotations,
+    clearSelection: clearSelection,
     focusAnnotations: focusAnnotations,
     highlightAnnotations: highlightAnnotations,
-    removeSelectedAnnotation: removeSelectedAnnotation,
     selectAnnotations: selectAnnotations,
     selectTab: selectTab,
     setCollapsed: setCollapsed,
     setFilterQuery: setFilterQuery,
+    setFocusModeFocused: setFocusModeFocused,
     setForceVisible: setForceVisible,
     setSortKey: setSortKey,
     toggleSelectedAnnotations: toggleSelectedAnnotations,
@@ -334,6 +461,13 @@ module.exports = {
 
   selectors: {
     hasSelectedAnnotations,
+    filterQuery,
+    focusModeFocused,
+    focusModeEnabled,
+    focusModeHasUser,
+    focusModeUsername,
+    focusModeUserPrettyName,
     isAnnotationSelected,
+    getFirstSelectedAnnotationId,
   },
 };

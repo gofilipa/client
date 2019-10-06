@@ -1,7 +1,7 @@
 'use strict';
 
 const events = require('../events');
-const metadata = require('../annotation-metadata');
+const metadata = require('../util/annotation-metadata');
 
 /**
  * Component which displays a virtualized list of annotation threads.
@@ -49,7 +49,13 @@ const virtualThreadOptions = {
 };
 
 // @ngInject
-function ThreadListController($element, $scope, settings, VirtualThreadList) {
+function ThreadListController(
+  $element,
+  $scope,
+  settings,
+  store,
+  VirtualThreadList
+) {
   // `visibleThreads` keeps track of the subset of all threads matching the
   // current filters which are in or near the viewport and the view then renders
   // only those threads, using placeholders above and below the visible threads
@@ -82,29 +88,42 @@ function ThreadListController($element, $scope, settings, VirtualThreadList) {
       this.thread,
       options
     );
-    visibleThreads.on('changed', function(state) {
-      self.virtualThreadList = {
-        visibleThreads: state.visibleThreads,
-        invisibleThreads: state.invisibleThreads,
-        offscreenUpperHeight: state.offscreenUpperHeight + 'px',
-        offscreenLowerHeight: state.offscreenLowerHeight + 'px',
-      };
-
-      scopeTimeout(
-        $scope,
-        function() {
-          state.visibleThreads.forEach(function(thread) {
-            const height = getThreadHeight(thread.id);
-            if (!height) {
-              return;
-            }
-            visibleThreads.setThreadHeight(thread.id, height);
-          });
-        },
-        50
-      );
-    });
+    // Calculate the visible threads.
+    onVisibleThreadsChanged(visibleThreads.calculateVisibleThreads());
+    // Subscribe onVisibleThreadsChanged to the visibleThreads 'changed' event
+    // after calculating visible threads, to avoid an undesired second call to
+    // onVisibleThreadsChanged that occurs from the emission of the 'changed'
+    // event during the visibleThreads calculation.
+    visibleThreads.on('changed', onVisibleThreadsChanged);
   };
+
+  /**
+   * Update which threads are visible in the virtualThreadsList.
+   *
+   * @param {Object} state the new state of the virtualThreadsList
+   */
+  function onVisibleThreadsChanged(state) {
+    self.virtualThreadList = {
+      visibleThreads: state.visibleThreads,
+      invisibleThreads: state.invisibleThreads,
+      offscreenUpperHeight: state.offscreenUpperHeight + 'px',
+      offscreenLowerHeight: state.offscreenLowerHeight + 'px',
+    };
+
+    scopeTimeout(
+      $scope,
+      function() {
+        state.visibleThreads.forEach(function(thread) {
+          const height = getThreadHeight(thread.id);
+          if (!height) {
+            return;
+          }
+          visibleThreads.setThreadHeight(thread.id, height);
+        });
+      },
+      50
+    );
+  }
 
   /**
    * Return the vertical scroll offset for the document in order to position the
@@ -149,7 +168,7 @@ function ThreadListController($element, $scope, settings, VirtualThreadList) {
     if (annotation.$highlight || metadata.isReply(annotation)) {
       return;
     }
-    self.onClearSelection();
+    store.clearSelection();
     scrollIntoView(annotation.$tag);
   });
 
@@ -172,19 +191,12 @@ module.exports = {
     thread: '<',
     showDocumentInfo: '<',
 
-    /**
-     * Called when the user clicks a link to show an annotation that does not
-     * match the current filter.
-     */
-    onForceVisible: '&',
     /** Called when the user focuses an annotation by hovering it. */
     onFocus: '&',
     /** Called when a user selects an annotation. */
     onSelect: '&',
     /** Called when a user toggles the expansion state of an annotation thread. */
     onChangeCollapsed: '&',
-    /** Called to clear the current selection. */
-    onClearSelection: '&',
   },
   template: require('../templates/thread-list.html'),
 };

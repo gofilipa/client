@@ -17,7 +17,6 @@ describe('sidebar.oauth-auth', function() {
   let fakeApiRoutes;
   let fakeClient;
   let fakeFlash;
-  let fakeHttp;
   let fakeLocalStorage;
   let fakeWindow;
   let fakeSettings;
@@ -88,8 +87,7 @@ describe('sidebar.oauth-auth', function() {
       authorize: sinon.stub().returns(Promise.resolve(null)),
     };
 
-    FakeOAuthClient = ($http, config) => {
-      fakeClient.$http = $http;
+    FakeOAuthClient = config => {
       fakeClient.config = config;
       return fakeClient;
     };
@@ -97,10 +95,7 @@ describe('sidebar.oauth-auth', function() {
 
     fakeWindow = new FakeWindow();
 
-    fakeHttp = {};
-
     angular.mock.module('app', {
-      $http: fakeHttp,
       $window: fakeWindow,
       apiRoutes: fakeApiRoutes,
       flash: fakeFlash,
@@ -123,7 +118,6 @@ describe('sidebar.oauth-auth', function() {
   it('configures an OAuthClient correctly', () => {
     // Call a method which will trigger construction of the `OAuthClient`.
     return auth.tokenGetter().then(() => {
-      assert.equal(fakeClient.$http, fakeHttp);
       assert.deepEqual(fakeClient.config, {
         clientId: 'the-client-id',
         tokenEndpoint: 'https://hypothes.is/api/token',

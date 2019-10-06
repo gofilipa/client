@@ -9,15 +9,7 @@
 module.exports = {
   bundles: {
     jquery: ['jquery'],
-    angular: [
-      'angular',
-      'angular-route',
-      'angular-sanitize',
-      'ng-tags-input',
-      'angular-toastr',
-      'angulartics/src/angulartics',
-      'angulartics/src/angulartics-ga',
-    ],
+    angular: ['angular', 'angular-route', 'ng-tags-input', 'angular-toastr'],
     katex: ['katex'],
     showdown: ['showdown'],
     raven: ['raven-js'],
@@ -32,7 +24,5 @@ module.exports = {
   // 2. The module is itself a compiled Browserify bundle containing
   //    internal require() statements, which should not be processed
   //    when including the bundle in another project.
-  noParseModules: [
-    'jquery',
-  ],
+  noParseModules: ['jquery'],
 };

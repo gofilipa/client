@@ -1,8 +1,33 @@
+/* global process */
+
 'use strict';
 
 /* global __dirname */
 
 const path = require('path');
+const envify = require('loose-envify/custom');
+
+let chromeFlags = [];
+process.env.CHROME_BIN = require('puppeteer').executablePath();
+
+// On Travis and in Docker, the tests run as root, so the sandbox must be
+// disabled.
+if (process.env.TRAVIS || process.env.RUNNING_IN_DOCKER) {
+  chromeFlags.push('--no-sandbox');
+}
+
+if (process.env.RUNNING_IN_DOCKER) {
+  // Disable `/dev/shm` usage as this can cause Chrome to fail to load large
+  // HTML pages, such as the one Karma creates with all the tests loaded.
+  //
+  // See https://github.com/GoogleChrome/puppeteer/issues/1834 and
+  // https://github.com/karma-runner/karma-chrome-launcher/issues/198.
+  chromeFlags.push('--disable-dev-shm-usage');
+
+  // Use Chromium from Alpine packages. The one that Puppeteer downloads won't
+  // load in Alpine.
+  process.env.CHROME_BIN = 'chromium-browser';
+}
 
 module.exports = function(config) {
   config.set({
@@ -15,13 +40,6 @@ module.exports = function(config) {
 
     // list of files / patterns to load in the browser
     files: [
-      // Polyfills for PhantomJS
-      './shared/polyfills/es2015.js',
-      './shared/polyfills/es2016.js',
-      './shared/polyfills/es2017.js',
-      './shared/polyfills/string.prototype.normalize.js',
-      './shared/polyfills/url.js',
-
       // Test setup
       './sidebar/test/bootstrap.js',
 
@@ -71,10 +89,6 @@ module.exports = function(config) {
     browserify: {
       debug: true,
       extensions: ['.coffee'],
-      configure: function(bundle) {
-        bundle.plugin('proxyquire-universal');
-      },
-
       transform: [
         'coffeeify',
         [
@@ -84,6 +98,7 @@ module.exports = function(config) {
             // code coverage instrumentation for Istanbul.
             extensions: ['.js', '.coffee'],
             plugins: [
+              'mockable-imports',
               [
                 'babel-plugin-istanbul',
                 {
@@ -93,6 +108,8 @@ module.exports = function(config) {
             ],
           },
         ],
+        // Enable debugging checks in libraries that use `NODE_ENV` guards.
+        [envify({ NODE_ENV: 'development' }), { global: true }],
       ],
     },
 
@@ -137,8 +154,15 @@ module.exports = function(config) {
 
     // start these browsers
     // available browser launchers: https://npmjs.org/browse/keyword/karma-launcher
-    browsers: ['PhantomJS'],
+    browsers: ['ChromeHeadless_Custom'],
     browserNoActivityTimeout: 20000, // Travis is slow...
+
+    customLaunchers: {
+      ChromeHeadless_Custom: {
+        base: 'ChromeHeadless',
+        flags: chromeFlags,
+      },
+    },
 
     // Continuous Integration mode
     // if true, Karma captures browsers, runs the tests and exits

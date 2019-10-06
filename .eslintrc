@@ -1,17 +1,10 @@
 {
-  "extends": "hypothesis",
+  "extends": ["hypothesis"],
   "globals": {
     "Set": false
   },
   "rules": {
-    "mocha/no-exclusive-tests": "error",
-    "no-var": "error",
-    "indent": "off"
-  },
-  "parserOptions": {
-    "ecmaVersion": 2018
-  },
-  "plugins": [
-    "mocha"
-  ],
+    // Suppressed to make ESLint v6 migration easier.
+    "no-prototype-builtins": "off"
+  }
 }

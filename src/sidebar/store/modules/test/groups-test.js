@@ -127,10 +127,36 @@ describe('sidebar.store.modules.groups', () => {
     });
   });
 
+  describe('clearGroups', () => {
+    it('clears the list of groups', () => {
+      store.loadGroups([publicGroup]);
+
+      store.clearGroups();
+
+      assert.equal(store.getState().groups.length, 0);
+    });
+
+    it('clears the focused group id', () => {
+      store.loadGroups([publicGroup]);
+      store.focusGroup(publicGroup.id);
+
+      store.clearGroups();
+
+      assert.equal(store.getState().focusedGroupId, null);
+    });
+  });
+
   describe('allGroups', () => {
     it('returns all groups', () => {
       store.loadGroups([publicGroup, privateGroup]);
       assert.deepEqual(store.allGroups(), [publicGroup, privateGroup]);
+    });
+  });
+
+  describe('getInScopeGroups', () => {
+    it('returns all groups that are in scope', () => {
+      store.loadGroups([publicGroup, privateGroup, restrictedOutOfScopeGroup]);
+      assert.deepEqual(store.getInScopeGroups(), [publicGroup, privateGroup]);
     });
   });
 

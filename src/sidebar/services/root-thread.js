@@ -3,9 +3,8 @@
 const buildThread = require('../build-thread');
 const events = require('../events');
 const memoize = require('../util/memoize');
-const metadata = require('../annotation-metadata');
-const tabs = require('../tabs');
-const uiConstants = require('../ui-constants');
+const metadata = require('../util/annotation-metadata');
+const tabs = require('../util/tabs');
 
 function truthyKeys(map) {
   return Object.keys(map).filter(function(k) {
@@ -40,7 +39,7 @@ const sortFns = {
  * The root thread is then displayed by viewer.html
  */
 // @ngInject
-function RootThread($rootScope, store, drafts, searchFilter, viewFilter) {
+function RootThread($rootScope, store, searchFilter, viewFilter) {
   /**
    * Build the root conversation thread from the given UI state.
    *
@@ -49,17 +48,24 @@ function RootThread($rootScope, store, drafts, searchFilter, viewFilter) {
    */
   function buildRootThread(state) {
     const sortFn = sortFns[state.sortKey];
-
+    const shouldFilterThread = () => {
+      // Is there a search query, or are we in an active (focused) focus mode?
+      return state.filterQuery || store.focusModeFocused();
+    };
     let filterFn;
-    if (state.filterQuery) {
-      const filters = searchFilter.generateFacetedFilter(state.filterQuery);
+    if (shouldFilterThread()) {
+      const filters = searchFilter.generateFacetedFilter(state.filterQuery, {
+        // if a focus mode is applied (focused) and we're focusing on a user
+        user: store.focusModeFocused() && store.focusModeUsername(),
+      });
+
       filterFn = function(annot) {
         return viewFilter.filter([annot], filters).length > 0;
       };
     }
 
     let threadFilterFn;
-    if (state.isSidebar && !state.filterQuery) {
+    if (state.isSidebar && !shouldFilterThread()) {
       threadFilterFn = function(thread) {
         if (!thread.annotation) {
           return false;
@@ -82,18 +88,6 @@ function RootThread($rootScope, store, drafts, searchFilter, viewFilter) {
     });
   }
 
-  function deleteNewAndEmptyAnnotations() {
-    store
-      .getState()
-      .annotations.filter(function(ann) {
-        return metadata.isNew(ann) && !drafts.getIfNotEmpty(ann);
-      })
-      .forEach(function(ann) {
-        drafts.remove(ann);
-        $rootScope.$broadcast(events.ANNOTATION_DELETED, ann);
-      });
-  }
-
   // Listen for annotations being created or loaded
   // and show them in the UI.
   //
@@ -111,33 +105,14 @@ function RootThread($rootScope, store, drafts, searchFilter, viewFilter) {
   });
 
   $rootScope.$on(events.BEFORE_ANNOTATION_CREATED, function(event, ann) {
-    // When a new annotation is created, remove any existing annotations
-    // that are empty.
-    deleteNewAndEmptyAnnotations();
-
-    store.addAnnotations([ann]);
-
-    // If the annotation is of type note or annotation, make sure
-    // the appropriate tab is selected. If it is of type reply, user
-    // stays in the selected tab.
-    if (metadata.isPageNote(ann)) {
-      store.selectTab(uiConstants.TAB_NOTES);
-    } else if (metadata.isAnnotation(ann)) {
-      store.selectTab(uiConstants.TAB_ANNOTATIONS);
-    }
-
-    (ann.references || []).forEach(function(parent) {
-      store.setCollapsed(parent, false);
-    });
+    store.createAnnotation(ann);
   });
 
   // Remove any annotations that are deleted or unloaded
   $rootScope.$on(events.ANNOTATION_DELETED, function(event, annotation) {
     store.removeAnnotations([annotation]);
-    if (annotation.id) {
-      store.removeSelectedAnnotation(annotation.id);
-    }
   });
+
   $rootScope.$on(events.ANNOTATIONS_UNLOADED, function(event, annotations) {
     store.removeAnnotations(annotations);
   });

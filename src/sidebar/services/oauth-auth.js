@@ -25,7 +25,6 @@ const serviceConfig = require('../service-config');
  */
 // @ngInject
 function auth(
-  $http,
   $rootScope,
   $window,
   OAuthClient,
@@ -153,7 +152,7 @@ function auth(
       return Promise.resolve(client);
     }
     return apiRoutes.links().then(links => {
-      client = new OAuthClient($http, {
+      client = new OAuthClient({
         clientId: settings.oauthClientId,
         authorizationEndpoint: links['oauth.authorize'],
         revokeEndpoint: links['oauth.revoke'],
@@ -281,15 +280,17 @@ function auth(
    *
    * This revokes and then forgets any OAuth credentials that the user has.
    */
-  function logout() {
-    return Promise.all([tokenInfoPromise, oauthClient()])
-      .then(([token, client]) => {
-        return client.revokeToken(token.accessToken);
-      })
-      .then(() => {
-        tokenInfoPromise = Promise.resolve(null);
-        localStorage.removeItem(storageKey());
-      });
+  async function logout() {
+    const [token, client] = await Promise.all([
+      tokenInfoPromise,
+      oauthClient(),
+    ]);
+    await client.revokeToken(token.accessToken);
+
+    // eslint-disable-next-line require-atomic-updates
+    tokenInfoPromise = Promise.resolve(null);
+
+    localStorage.removeItem(storageKey());
   }
 
   listenForTokenStorageEvents();

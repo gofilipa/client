@@ -35,6 +35,14 @@ const angular = require('angular');
 // it must be require'd after angular is first require'd
 require('autofill-event');
 
+// Load polyfill for :focus-visible pseudo-class.
+require('focus-visible');
+
+// Enable debugging checks for Preact.
+require('preact/debug');
+
+const wrapReactComponent = require('./util/wrap-react-component');
+
 // Setup Angular integration for Raven
 if (appConfig.raven) {
   raven.angularModule(angular);
@@ -71,19 +79,18 @@ function configureRoutes($routeProvider) {
   // The `vm.{auth,search}` properties used in these templates come from the
   // `<hypothesis-app>` component which hosts the router's container element.
   $routeProvider.when('/a/:id', {
-    template:
-      '<annotation-viewer-content search="vm.search"></annotation-viewer-content>',
+    template: '<annotation-viewer-content></annotation-viewer-content>',
     reloadOnSearch: false,
     resolve: resolve,
   });
   $routeProvider.when('/stream', {
-    template: '<stream-content search="vm.search"></stream-content>',
+    template: '<stream-content></stream-content>',
     reloadOnSearch: false,
     resolve: resolve,
   });
   $routeProvider.otherwise({
     template:
-      '<sidebar-content search="vm.search" auth="vm.auth" on-login="vm.login()"></sidebar-content>',
+      '<sidebar-content auth="vm.auth" on-login="vm.login()"></sidebar-content>',
     reloadOnSearch: false,
     resolve: resolve,
   });
@@ -97,8 +104,19 @@ function configureToastr(toastrConfig) {
 }
 
 // @ngInject
-function setupHttp($http, streamer) {
-  $http.defaults.headers.common['X-Client-Id'] = streamer.clientId;
+function setupApi(api, streamer) {
+  api.setClientId(streamer.clientId);
+}
+
+/**
+ * Send a page view event when the app starts up.
+ *
+ * We don't bother tracking route changes later because the client only uses a
+ * single route in a given session.
+ */
+// @ngInject
+function sendPageView(analytics) {
+  analytics.sendPageView();
 }
 
 function startAngularApp(config) {
@@ -107,18 +125,11 @@ function startAngularApp(config) {
       // Angular addons which export the Angular module name
       // via module.exports
       require('angular-route'),
-      require('angular-sanitize'),
       require('angular-toastr'),
 
       // Angular addons which do not export the Angular module
       // name via module.exports
-      ['angulartics', require('angulartics')][0],
-      [
-        'angulartics.google.analytics',
-        require('angulartics/src/angulartics-ga'),
-      ][0],
       ['ngTagsInput', require('ng-tags-input')][0],
-      ['ui.bootstrap', require('./vendor/ui-bootstrap-custom-tpls-0.13.4')][0],
 
       // Local addons
       'ngRaven',
@@ -129,10 +140,17 @@ function startAngularApp(config) {
 
     // UI components
     .component('annotation', require('./components/annotation'))
-    .component('annotationHeader', require('./components/annotation-header'))
+    .component(
+      'annotationHeader',
+      wrapReactComponent(require('./components/annotation-header'))
+    )
     .component(
       'annotationActionButton',
-      require('./components/annotation-action-button')
+      wrapReactComponent(require('./components/annotation-action-button'))
+    )
+    .component(
+      'annotationPublishControl',
+      wrapReactComponent(require('./components/annotation-publish-control'))
     )
     .component(
       'annotationShareDialog',
@@ -143,35 +161,45 @@ function startAngularApp(config) {
       'annotationViewerContent',
       require('./components/annotation-viewer-content')
     )
-    .component('dropdownMenuBtn', require('./components/dropdown-menu-btn'))
     .component('excerpt', require('./components/excerpt'))
-    .component('groupList', require('./components/group-list'))
-    .component('helpLink', require('./components/help-link'))
-    .component('helpPanel', require('./components/help-panel'))
-    .component('loggedoutMessage', require('./components/loggedout-message'))
-    .component('loginControl', require('./components/login-control'))
-    .component('markdown', require('./components/markdown'))
-    .component('moderationBanner', require('./components/moderation-banner'))
-    .component('newNoteBtn', require('./components/new-note-btn'))
     .component(
-      'publishAnnotationBtn',
-      require('./components/publish-annotation-btn')
+      'helpLink',
+      wrapReactComponent(require('./components/help-link'))
     )
-    .component('searchInput', require('./components/search-input'))
-    .component('searchStatusBar', require('./components/search-status-bar'))
-    .component('selectionTabs', require('./components/selection-tabs'))
+    .component('helpPanel', require('./components/help-panel'))
+    .component(
+      'loggedOutMessage',
+      wrapReactComponent(require('./components/logged-out-message'))
+    )
+    .component('markdown', require('./components/markdown'))
+    .component(
+      'moderationBanner',
+      wrapReactComponent(require('./components/moderation-banner'))
+    )
+    .component(
+      'searchStatusBar',
+      wrapReactComponent(require('./components/search-status-bar'))
+    )
+    .component(
+      'focusedModeHeader',
+      wrapReactComponent(require('./components/focused-mode-header'))
+    )
+    .component(
+      'selectionTabs',
+      wrapReactComponent(require('./components/selection-tabs'))
+    )
     .component('sidebarContent', require('./components/sidebar-content'))
+    .component(
+      'sidebarContentError',
+      wrapReactComponent(require('./components/sidebar-content-error'))
+    )
     .component('sidebarTutorial', require('./components/sidebar-tutorial'))
     .component('shareDialog', require('./components/share-dialog'))
-    .component('sortDropdown', require('./components/sort-dropdown'))
-    .component('spinner', require('./components/spinner'))
     .component('streamContent', require('./components/stream-content'))
-    .component('svgIcon', require('./components/svg-icon'))
+    .component('svgIcon', wrapReactComponent(require('./components/svg-icon')))
     .component('tagEditor', require('./components/tag-editor'))
     .component('threadList', require('./components/thread-list'))
-    .component('timestamp', require('./components/timestamp'))
-    .component('topBar', require('./components/top-bar'))
-
+    .component('topBar', wrapReactComponent(require('./components/top-bar')))
     .directive('hAutofocus', require('./directive/h-autofocus'))
     .directive('hBranding', require('./directive/h-branding'))
     .directive('hOnTouch', require('./directive/h-on-touch'))
@@ -180,11 +208,11 @@ function startAngularApp(config) {
 
     .service('analytics', require('./services/analytics'))
     .service('annotationMapper', require('./services/annotation-mapper'))
+    .service('annotations', require('./services/annotations'))
     .service('api', require('./services/api'))
     .service('apiRoutes', require('./services/api-routes'))
     .service('auth', require('./services/oauth-auth'))
     .service('bridge', require('../shared/bridge'))
-    .service('drafts', require('./services/drafts'))
     .service('features', require('./services/features'))
     .service('flash', require('./services/flash'))
     .service('frameSync', require('./services/frame-sync').default)
@@ -221,7 +249,8 @@ function startAngularApp(config) {
     .config(configureRoutes)
     .config(configureToastr)
 
-    .run(setupHttp)
+    .run(sendPageView)
+    .run(setupApi)
     .run(crossOriginRPC.server.start);
 
   if (config.liveReloadServer) {

@@ -1,13 +1,14 @@
 'use strict';
 
 const angular = require('angular');
-const proxyquire = require('proxyquire');
 const immutable = require('seamless-immutable');
 
 const annotationFixtures = require('../../test/annotation-fixtures');
 const events = require('../../events');
 const uiConstants = require('../../ui-constants');
 const util = require('../../../shared/test/util');
+
+const rootThreadFactory = require('../root-thread');
 
 const unroll = util.unroll;
 
@@ -26,8 +27,8 @@ const fixtures = immutable({
 describe('rootThread', function() {
   let fakeStore;
   let fakeBuildThread;
-  let fakeDrafts;
   let fakeSearchFilter;
+  let fakeSettings;
   let fakeViewFilter;
 
   let $rootScope;
@@ -39,6 +40,7 @@ describe('rootThread', function() {
       state: {
         annotations: [],
         expanded: {},
+        drafts: [],
         filterQuery: null,
         focusedAnnotationMap: null,
         forceVisible: {},
@@ -61,18 +63,20 @@ describe('rootThread', function() {
       addAnnotations: sinon.stub(),
       setCollapsed: sinon.stub(),
       selectTab: sinon.stub(),
+      getDraftIfNotEmpty: sinon.stub().returns(null),
+      removeDraft: sinon.stub(),
+      createAnnotation: sinon.stub(),
+      focusModeFocused: sinon.stub().returns(false),
+      focusModeUsername: sinon.stub().returns({}),
     };
 
     fakeBuildThread = sinon.stub().returns(fixtures.emptyThread);
 
-    fakeDrafts = {
-      getIfNotEmpty: sinon.stub().returns(null),
-      remove: sinon.stub(),
-    };
-
     fakeSearchFilter = {
       generateFacetedFilter: sinon.stub(),
     };
+
+    fakeSettings = {};
 
     fakeViewFilter = {
       filter: sinon.stub(),
@@ -81,15 +85,10 @@ describe('rootThread', function() {
     angular
       .module('app', [])
       .value('store', fakeStore)
-      .value('drafts', fakeDrafts)
       .value('searchFilter', fakeSearchFilter)
+      .value('settings', fakeSettings)
       .value('viewFilter', fakeViewFilter)
-      .service(
-        'rootThread',
-        proxyquire('../root-thread', {
-          '../build-thread': util.noCallThru(fakeBuildThread),
-        })
-      );
+      .service('rootThread', rootThreadFactory);
 
     angular.mock.module('app');
 
@@ -97,6 +96,16 @@ describe('rootThread', function() {
       $rootScope = _$rootScope_;
       rootThread = _rootThread_;
     });
+  });
+
+  beforeEach(() => {
+    rootThreadFactory.$imports.$mock({
+      '../build-thread': fakeBuildThread,
+    });
+  });
+
+  afterEach(() => {
+    rootThreadFactory.$imports.$restore();
   });
 
   describe('#thread', function() {
@@ -337,8 +346,34 @@ describe('rootThread', function() {
     });
   });
 
+  describe('when the focus user is present', () => {
+    it("generates a thread filter focused on the user's annotations", () => {
+      fakeBuildThread.reset();
+      const filters = [{ user: { terms: ['acct:bill@localhost'] } }];
+      const annotation = annotationFixtures.defaultAnnotation();
+      fakeSearchFilter.generateFacetedFilter.returns(filters);
+      fakeStore.focusModeFocused = sinon.stub().returns(true);
+      rootThread.thread(fakeStore.state);
+      const filterFn = fakeBuildThread.args[0][1].filterFn;
+
+      fakeViewFilter.filter.returns([annotation]);
+      assert.isTrue(filterFn(annotation));
+      assert.calledWith(
+        fakeViewFilter.filter,
+        sinon.match([annotation]),
+        filters
+      );
+    });
+  });
+
   context('when annotation events occur', function() {
     const annot = annotationFixtures.defaultAnnotation();
+
+    it('creates a new annotation in the store when BEFORE_ANNOTATION_CREATED event occurs', function() {
+      $rootScope.$broadcast(events.BEFORE_ANNOTATION_CREATED, annot);
+      assert.notCalled(fakeStore.removeAnnotations);
+      assert.calledWith(fakeStore.createAnnotation, sinon.match(annot));
+    });
 
     unroll(
       'adds or updates annotations when #event event occurs',
@@ -349,38 +384,20 @@ describe('rootThread', function() {
         assert.calledWith(fakeStore.addAnnotations, sinon.match(annotations));
       },
       [
-        { event: events.BEFORE_ANNOTATION_CREATED, annotations: annot },
         { event: events.ANNOTATION_CREATED, annotations: annot },
         { event: events.ANNOTATION_UPDATED, annotations: annot },
         { event: events.ANNOTATIONS_LOADED, annotations: [annot] },
       ]
     );
 
-    it('expands the parents of new annotations', function() {
-      const reply = annotationFixtures.oldReply();
-      $rootScope.$broadcast(events.BEFORE_ANNOTATION_CREATED, reply);
-      assert.calledWith(fakeStore.setCollapsed, reply.references[0], false);
+    it('removes annotations when ANNOTATION_DELETED event occurs', function() {
+      $rootScope.$broadcast(events.ANNOTATION_DELETED, annot);
+      assert.calledWith(fakeStore.removeAnnotations, sinon.match([annot]));
     });
 
-    unroll(
-      'removes annotations when #event event occurs',
-      function(testCase) {
-        $rootScope.$broadcast(testCase.event, testCase.annotations);
-        const annotations = [].concat(testCase.annotations);
-        assert.calledWith(
-          fakeStore.removeAnnotations,
-          sinon.match(annotations)
-        );
-      },
-      [
-        { event: events.ANNOTATION_DELETED, annotations: annot },
-        { event: events.ANNOTATIONS_UNLOADED, annotations: [annot] },
-      ]
-    );
-
-    it('deselects deleted annotations', function() {
-      $rootScope.$broadcast(events.ANNOTATION_DELETED, annot);
-      assert.calledWith(fakeStore.removeSelectedAnnotation, annot.id);
+    it('removes annotations when ANNOTATIONS_UNLOADED event occurs', function() {
+      $rootScope.$broadcast(events.ANNOTATIONS_UNLOADED, annot);
+      assert.calledWith(fakeStore.removeAnnotations, sinon.match(annot));
     });
 
     describe('when a new annotation is created', function() {
@@ -394,33 +411,15 @@ describe('rootThread', function() {
         fakeStore.state.annotations.push(existingNewAnnot);
       });
 
-      it('removes drafts for new and empty annotations', function() {
-        fakeDrafts.getIfNotEmpty.returns(null);
-        const annotation = annotationFixtures.newEmptyAnnotation();
-
-        $rootScope.$broadcast(events.BEFORE_ANNOTATION_CREATED, annotation);
-
-        assert.calledWith(fakeDrafts.remove, existingNewAnnot);
-      });
-
-      it('deletes new and empty annotations', function() {
-        fakeDrafts.getIfNotEmpty.returns(null);
-        const annotation = annotationFixtures.newEmptyAnnotation();
-
-        $rootScope.$broadcast(events.BEFORE_ANNOTATION_CREATED, annotation);
-
-        assert.calledWithMatch(onDelete, sinon.match.any, existingNewAnnot);
-      });
-
       it('does not remove annotations that have non-empty drafts', function() {
-        fakeDrafts.getIfNotEmpty.returns(fixtures.nonEmptyDraft);
+        fakeStore.getDraftIfNotEmpty.returns(fixtures.nonEmptyDraft);
 
         $rootScope.$broadcast(
           events.BEFORE_ANNOTATION_CREATED,
           annotationFixtures.newAnnotation()
         );
 
-        assert.notCalled(fakeDrafts.remove);
+        assert.notCalled(fakeStore.removeDraft);
         assert.notCalled(onDelete);
       });
 
@@ -433,7 +432,7 @@ describe('rootThread', function() {
           annotationFixtures.newAnnotation()
         );
 
-        assert.notCalled(fakeDrafts.remove);
+        assert.notCalled(fakeStore.removeDraft);
         assert.notCalled(onDelete);
       });
     });

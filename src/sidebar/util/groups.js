@@ -5,11 +5,11 @@ const escapeStringRegexp = require('escape-string-regexp');
 /**
  * Combine groups from multiple api calls together to form a unique list of groups.
  * Add an isMember property to each group indicating whether the logged in user is a member.
- * Add an isScopedToUri property to each group indicating whether the group can be annotated
- *   in based on group scoping and the uri of the current page.
+ * Add an isScopedToUri property to each group indicating whether the uri matches the group's
+ *   uri patterns. If no uri patterns are specified, defaults to True.
  *
  * @param {Group[]} userGroups - groups the user is a member of
- * @param {Group[]} featuredGroups - groups scoped to the particular uri, authority, and user
+ * @param {Group[]} featuredGroups - all other groups, may include some duplicates from the userGroups
  * @param {string} uri - uri of the current page
  */
 function combineGroups(userGroups, featuredGroups, uri) {
@@ -27,18 +27,22 @@ function combineGroups(userGroups, featuredGroups, uri) {
 
   const groups = userGroups.concat(featuredGroups);
 
-  // Add isScopedToUri property indicating whether a group can be
-  // annotated in at this particular url.
+  // Add isScopedToUri property indicating whether a group is within scope
+  // of the given uri. If the scope check cannot be performed, isScopedToUri
+  // defaults to true.
   groups.forEach(group => (group.isScopedToUri = isScopedToUri(group, uri)));
 
   return groups;
 }
 
 function isScopedToUri(group, uri) {
-  // If the group has scope info, the scoping is enforced,
-  // and the uri patterns don't include this page's uri
-  // the group is not selectable, otherwise it is.
-  if (group.scopes && group.scopes.enforced) {
+  /* If a scope check cannot be performed, meaning:
+   * - the group doesn't have a scopes attribute
+   * - the group has no scopes.uri_patterns present
+   * - there is no uri to compare against (aka: uri=null)
+   * the group is defaulted to in-scope.
+   */
+  if (group.scopes && group.scopes.uri_patterns.length > 0 && uri) {
     return uriMatchesScopes(uri, group.scopes.uri_patterns);
   }
   return true;

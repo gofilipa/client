@@ -11,3 +11,6 @@ package-lock.json
 .tlskey.pem
 
 .tox
+
+.DS_Store
+
